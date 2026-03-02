@@ -81,6 +81,23 @@ func (a *Agent) Resume(ctx context.Context, runID string) error {
 	return a.engine.Resume(ctx, runID)
 }
 
+// LastResponseID returns the OpenAI response ID from a completed run,
+// used to chain conversation turns via PrevResponseID.
+func (a *Agent) LastResponseID(runID string) (string, error) {
+	run, err := a.engine.GetRun(runID)
+	if err != nil {
+		return "", err
+	}
+	if run.Output == nil {
+		return "", nil
+	}
+	var state stepState
+	if err := json.Unmarshal(run.Output, &state); err != nil {
+		return "", fmt.Errorf("agent: unmarshal run output: %w", err)
+	}
+	return state.PrevResponseID, nil
+}
+
 func (a *Agent) registerWorkflow() {
 	a.engine.Register(workflow.Workflow{
 		Name:    "agent",
