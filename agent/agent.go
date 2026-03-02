@@ -37,6 +37,15 @@ func New(engine *workflow.SQLiteEngine, config Config) (*Agent, error) {
 	return a, nil
 }
 
+// Tool returns the definition of a registered tool, or nil if not found.
+func (a *Agent) Tool(name string) *ToolDef {
+	t, ok := a.tools[name]
+	if !ok {
+		return nil
+	}
+	return &t
+}
+
 // Start begins a new agent run. The prompt is sent to the LLM as a user message.
 // Returns the workflow run ID.
 func (a *Agent) Start(ctx context.Context, prompt string, opts *RunOpts) (string, error) {

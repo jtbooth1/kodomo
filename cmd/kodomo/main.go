@@ -8,6 +8,7 @@ import (
 
 	"kodomo/agent"
 	"kodomo/cli"
+	"kodomo/tools"
 	"kodomo/workflow"
 )
 
@@ -43,6 +44,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	workDir, _ := os.Getwd()
+	if len(os.Args) > 1 {
+		workDir, err = filepath.Abs(os.Args[1])
+		if err != nil {
+			return fmt.Errorf("resolve path: %w", err)
+		}
+	}
+	tools.Register(a, workDir)
 
 	return cli.Run(context.Background(), a)
 }
