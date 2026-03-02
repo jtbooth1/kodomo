@@ -38,7 +38,7 @@ func run() error {
 	defer engine.Close()
 
 	a, err := agent.New(engine, agent.Config{
-		Model:        "gpt-5-mini",
+		Model:        "gpt-5.2-codex",
 		Instructions: "You are a helpful assistant.",
 	})
 	if err != nil {

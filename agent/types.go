@@ -9,7 +9,7 @@ import (
 
 // Config sets the defaults for all runs on an Agent.
 type Config struct {
-	Model           string                 // e.g. "gpt-4.1", "o3"
+	Model           string                 // e.g. "gpt-5.2-codex", "o3"
 	ReasoningEffort shared.ReasoningEffort // "low", "medium", "high", etc.
 	Instructions    string                 // system prompt
 }

@@ -15,7 +15,7 @@ e, _ := workflow.Open("kodomo.db")
 defer e.Close()
 
 a, _ := agent.New(e, agent.Config{
-    Model:           "gpt-4.1",
+    Model:           "gpt-5.2-codex",
     ReasoningEffort: shared.ReasoningEffortMedium,
     Instructions:    "You are a coding assistant.",
 })
@@ -42,7 +42,7 @@ Each arrow is a persisted `StepResult` in SQLite. The full conversation history 
 
 ```go
 type Config struct {
-    Model           string                 // required, e.g. "gpt-4.1"
+    Model           string                 // required, e.g. "gpt-5.2-codex"
     ReasoningEffort shared.ReasoningEffort // "low", "medium", "high", etc.
     Instructions    string                 // system prompt
 }

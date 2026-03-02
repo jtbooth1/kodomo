@@ -16,7 +16,7 @@ func testAgent(t *testing.T) (*Agent, *workflow.SQLiteEngine) {
 	}
 	t.Cleanup(func() { e.Close() })
 
-	a, err := New(e, Config{Model: "gpt-4.1"})
+	a, err := New(e, Config{Model: "gpt-5.2-codex"})
 	if err != nil {
 		t.Fatalf("new agent: %v", err)
 	}
