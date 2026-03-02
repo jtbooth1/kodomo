@@ -10,44 +10,29 @@ import (
 	openai "github.com/openai/openai-go/v3"
 )
 
-// Option configures an Agent.
-type Option func(*Agent)
-
-// WithMessageHandler sets the function called when the LLM invokes message_user.
-// Defaults to fmt.Println.
-func WithMessageHandler(fn func(string)) Option {
-	return func(a *Agent) { a.messageHandler = fn }
-}
-
 // Agent orchestrates LLM calls, tool execution, and workflow persistence.
 type Agent struct {
-	engine         *workflow.SQLiteEngine
-	client         openai.Client
-	config         Config
-	tools          map[string]ToolDef
-	messageHandler func(string)
+	engine *workflow.SQLiteEngine
+	client openai.Client
+	config Config
+	tools  map[string]ToolDef
 
 	// set per-run by Start, read by llmStep
 	runOpts RunOpts
 }
 
 // New creates an Agent. The OpenAI client reads OPENAI_API_KEY from the environment.
-func New(engine *workflow.SQLiteEngine, config Config, opts ...Option) (*Agent, error) {
+func New(engine *workflow.SQLiteEngine, config Config) (*Agent, error) {
 	if config.Model == "" {
 		return nil, fmt.Errorf("agent: Config.Model is required")
 	}
 
 	a := &Agent{
-		engine:         engine,
-		client:         openai.NewClient(),
-		config:         config,
-		tools:          make(map[string]ToolDef),
-		messageHandler: func(msg string) { fmt.Println(msg) },
+		engine: engine,
+		client: openai.NewClient(),
+		config: config,
+		tools:  make(map[string]ToolDef),
 	}
-	for _, opt := range opts {
-		opt(a)
-	}
-	a.registerBuiltinTools()
 	a.registerWorkflow()
 	return a, nil
 }
@@ -81,21 +66,29 @@ func (a *Agent) Resume(ctx context.Context, runID string) error {
 	return a.engine.Resume(ctx, runID)
 }
 
-// LastResponseID returns the OpenAI response ID from a completed run,
-// used to chain conversation turns via PrevResponseID.
-func (a *Agent) LastResponseID(runID string) (string, error) {
+// RunResult holds the output of a completed agent run.
+type RunResult struct {
+	ResponseID string // OpenAI response ID for chaining turns
+	Message    string // text response from the LLM
+}
+
+// Result returns the output of a completed run.
+func (a *Agent) Result(runID string) (*RunResult, error) {
 	run, err := a.engine.GetRun(runID)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if run.Output == nil {
-		return "", nil
+		return &RunResult{}, nil
 	}
 	var state stepState
 	if err := json.Unmarshal(run.Output, &state); err != nil {
-		return "", fmt.Errorf("agent: unmarshal run output: %w", err)
+		return nil, fmt.Errorf("agent: unmarshal run output: %w", err)
 	}
-	return state.PrevResponseID, nil
+	return &RunResult{
+		ResponseID: state.PrevResponseID,
+		Message:    state.Message,
+	}, nil
 }
 
 func (a *Agent) registerWorkflow() {
@@ -110,8 +103,7 @@ func (a *Agent) registerWorkflow() {
 	})
 }
 
-// toolStep executes tool calls from the LLM and returns results.
-// If any tool is terminal, the run completes after execution.
+// toolStep executes tool calls from the LLM and sends results back to llm.
 func (a *Agent) toolStep(ctx context.Context, input json.RawMessage) (*workflow.StepOutput, error) {
 	var state stepState
 	if err := json.Unmarshal(input, &state); err != nil {
@@ -119,8 +111,6 @@ func (a *Agent) toolStep(ctx context.Context, input json.RawMessage) (*workflow.
 	}
 
 	var results []toolResult
-	terminal := false
-
 	for _, tc := range state.ToolCalls {
 		tool, ok := a.tools[tc.Name]
 		if !ok {
@@ -133,23 +123,14 @@ func (a *Agent) toolStep(ctx context.Context, input json.RawMessage) (*workflow.
 		}
 
 		results = append(results, toolResult{
-			CallID:   tc.ID,
-			Output:   out,
-			Terminal: tool.Terminal,
+			CallID: tc.ID,
+			Output: out,
 		})
-
-		if tool.Terminal {
-			terminal = true
-		}
 	}
 
 	next, _ := json.Marshal(stepState{
 		PrevResponseID: state.PrevResponseID,
 		ToolResults:    results,
 	})
-
-	if terminal {
-		return workflow.Done(next), nil
-	}
 	return workflow.Goto("llm", next), nil
 }

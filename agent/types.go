@@ -29,7 +29,6 @@ type ToolDef struct {
 	Description string
 	Schema      map[string]any // JSON Schema for parameters
 	Handler     func(ctx context.Context, params json.RawMessage) (json.RawMessage, error)
-	Terminal    bool // if true, executing this tool ends the run
 }
 
 // toolCall is a parsed function call from the LLM response.
@@ -41,16 +40,15 @@ type toolCall struct {
 
 // toolResult is the output of executing a tool call.
 type toolResult struct {
-	CallID   string          `json:"call_id"`
-	Output   json.RawMessage `json:"output"`
-	Terminal bool            `json:"terminal"`
+	CallID string          `json:"call_id"`
+	Output json.RawMessage `json:"output"`
 }
 
 // stepState is the JSON structure flowing between the llm and tool steps.
 type stepState struct {
-	PrevResponseID string          `json:"prev_response_id,omitempty"`
-	UserMessage    string          `json:"user_message,omitempty"`
-	ToolCalls      []toolCall      `json:"tool_calls,omitempty"`
-	ToolResults    []toolResult    `json:"tool_results,omitempty"`
-	FinalOutput    json.RawMessage `json:"final_output,omitempty"`
+	PrevResponseID string       `json:"prev_response_id,omitempty"`
+	UserMessage    string       `json:"user_message,omitempty"`
+	ToolCalls      []toolCall   `json:"tool_calls,omitempty"`
+	ToolResults    []toolResult `json:"tool_results,omitempty"`
+	Message        string       `json:"message,omitempty"` // text response from the LLM (final output)
 }

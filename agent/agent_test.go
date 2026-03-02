@@ -8,7 +8,7 @@ import (
 	"kodomo/workflow"
 )
 
-func testAgent(t *testing.T, opts ...Option) (*Agent, *workflow.SQLiteEngine) {
+func testAgent(t *testing.T) (*Agent, *workflow.SQLiteEngine) {
 	t.Helper()
 	e, err := workflow.Open(":memory:")
 	if err != nil {
@@ -16,7 +16,7 @@ func testAgent(t *testing.T, opts ...Option) (*Agent, *workflow.SQLiteEngine) {
 	}
 	t.Cleanup(func() { e.Close() })
 
-	a, err := New(e, Config{Model: "gpt-4.1"}, opts...)
+	a, err := New(e, Config{Model: "gpt-4.1"})
 	if err != nil {
 		t.Fatalf("new agent: %v", err)
 	}
@@ -57,51 +57,7 @@ func TestAddToolValidation(t *testing.T) {
 	}
 }
 
-func TestBuiltinMessageUser(t *testing.T) {
-	var received string
-	a, _ := testAgent(t, WithMessageHandler(func(msg string) { received = msg }))
-
-	tool := a.tools["message_user"]
-	if !tool.Terminal {
-		t.Fatal("message_user should be terminal")
-	}
-
-	params, _ := json.Marshal(map[string]string{"message": "hello world"})
-	_, err := tool.Handler(context.Background(), params)
-	if err != nil {
-		t.Fatalf("handler: %v", err)
-	}
-	if received != "hello world" {
-		t.Fatalf("want 'hello world', got %q", received)
-	}
-}
-
 func TestToolStep(t *testing.T) {
-	var received string
-	a, _ := testAgent(t, WithMessageHandler(func(msg string) { received = msg }))
-
-	state, _ := json.Marshal(stepState{
-		PrevResponseID: "resp-123",
-		ToolCalls: []toolCall{
-			{ID: "call-1", Name: "message_user", Arguments: `{"message":"test output"}`},
-		},
-	})
-
-	out, err := a.toolStep(context.Background(), state)
-	if err != nil {
-		t.Fatalf("tool step: %v", err)
-	}
-
-	// message_user is terminal, so the step should return Done
-	if out.Next != "" {
-		t.Fatalf("expected Done (empty Next), got %q", out.Next)
-	}
-	if received != "test output" {
-		t.Fatalf("want 'test output', got %q", received)
-	}
-}
-
-func TestToolStepNonTerminal(t *testing.T) {
 	a, _ := testAgent(t)
 	a.AddTool(ToolDef{
 		Name:        "echo",
@@ -136,6 +92,9 @@ func TestToolStepNonTerminal(t *testing.T) {
 	if result.ToolResults[0].CallID != "call-1" {
 		t.Fatalf("wrong call ID: %s", result.ToolResults[0].CallID)
 	}
+	if result.PrevResponseID != "resp-123" {
+		t.Fatalf("PrevResponseID not carried through: %s", result.PrevResponseID)
+	}
 }
 
 func TestToolStepUnknownTool(t *testing.T) {
@@ -165,18 +124,11 @@ func TestToolParams(t *testing.T) {
 	})
 
 	params := a.toolParams()
-	if len(params) != 2 { // message_user + greet
-		t.Fatalf("want 2 tool params, got %d", len(params))
+	if len(params) != 1 {
+		t.Fatalf("want 1 tool param, got %d", len(params))
 	}
-
-	names := make(map[string]bool)
-	for _, p := range params {
-		if p.OfFunction != nil {
-			names[p.OfFunction.Name] = true
-		}
-	}
-	if !names["message_user"] || !names["greet"] {
-		t.Fatalf("missing tools: %v", names)
+	if params[0].OfFunction == nil || params[0].OfFunction.Name != "greet" {
+		t.Fatal("expected greet tool param")
 	}
 }
 
@@ -193,19 +145,18 @@ func TestNewRequiresModel(t *testing.T) {
 func TestWorkflowRegistered(t *testing.T) {
 	_, e := testAgent(t)
 
-	// The agent workflow should be registered. Starting it will fail at the
-	// llm step (no real API key), but the run should be created.
 	id, err := e.Start(context.Background(), "agent", json.RawMessage(`{"user_message":"hi"}`), nil)
-	if err != nil {
-		t.Fatalf("start: %v", err)
+	if id == "" {
+		t.Fatal("expected a run ID even on failure")
+	}
+	if err == nil {
+		t.Fatal("expected error (no API key)")
 	}
 
 	run, err := e.GetRun(id)
 	if err != nil {
 		t.Fatalf("get run: %v", err)
 	}
-	// Run fails because there's no real API key, but it proves the
-	// workflow was registered and the llm step was invoked.
 	if run.Status != workflow.StatusFailed {
 		t.Fatalf("expected failed (no API key), got %s", run.Status)
 	}

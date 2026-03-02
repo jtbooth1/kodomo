@@ -13,8 +13,8 @@ import (
 )
 
 // llmStep calls the OpenAI Responses API and parses the result.
-// If the response contains function calls, it transitions to the "tool" step.
-// A bare text response (no tool calls) is treated as an error.
+// Tool calls transition to the "tool" step. A text response is the final
+// answer — it ends the run with the message as output.
 func (a *Agent) llmStep(ctx context.Context, input json.RawMessage) (*workflow.StepOutput, error) {
 	var state stepState
 	if err := json.Unmarshal(input, &state); err != nil {
@@ -39,7 +39,6 @@ func (a *Agent) llmStep(ctx context.Context, input json.RawMessage) (*workflow.S
 		params.PreviousResponseID = param.NewOpt(state.PrevResponseID)
 	}
 
-	// Build input: either a user message or tool results from the previous tool step.
 	if len(state.ToolResults) > 0 {
 		var items responses.ResponseInputParam
 		for _, tr := range state.ToolResults {
@@ -70,15 +69,20 @@ func (a *Agent) llmStep(ctx context.Context, input json.RawMessage) (*workflow.S
 		}
 	}
 
-	if len(calls) == 0 {
-		return nil, fmt.Errorf("llm: model returned no tool calls (bare text responses are not allowed)")
+	if len(calls) > 0 {
+		next, _ := json.Marshal(stepState{
+			PrevResponseID: resp.ID,
+			ToolCalls:      calls,
+		})
+		return workflow.Goto("tool", next), nil
 	}
 
-	next, _ := json.Marshal(stepState{
+	// Text response — this is the message to the user. Done.
+	out, _ := json.Marshal(stepState{
 		PrevResponseID: resp.ID,
-		ToolCalls:      calls,
+		Message:        resp.OutputText(),
 	})
-	return workflow.Goto("tool", next), nil
+	return workflow.Done(out), nil
 }
 
 func (a *Agent) resolveModel() string {

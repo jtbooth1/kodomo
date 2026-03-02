@@ -9,8 +9,6 @@ import (
 	"kodomo/agent"
 	"kodomo/cli"
 	"kodomo/workflow"
-
-	"github.com/openai/openai-go/v3/shared"
 )
 
 func main() {
@@ -39,8 +37,8 @@ func run() error {
 	defer engine.Close()
 
 	a, err := agent.New(engine, agent.Config{
-		Model:           "gpt-4.1",
-		ReasoningEffort: shared.ReasoningEffortMedium,
+		Model:        "gpt-5-mini",
+		Instructions: "You are a helpful assistant.",
 	})
 	if err != nil {
 		return err

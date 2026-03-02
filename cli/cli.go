@@ -39,11 +39,13 @@ func Run(ctx context.Context, a *agent.Agent) error {
 			continue
 		}
 
-		respID, err := a.LastResponseID(runID)
+		result, err := a.Result(runID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error reading response id: %v\n", err)
+			fmt.Fprintf(os.Stderr, "error reading result: %v\n", err)
+			continue
 		}
-		prevResponseID = respID
+		prevResponseID = result.ResponseID
+		fmt.Println(result.Message)
 		fmt.Println()
 	}
 

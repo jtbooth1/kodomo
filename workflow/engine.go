@@ -120,7 +120,9 @@ func (e *SQLiteEngine) Start(ctx context.Context, workflowName string, input jso
 		e.saveTags(runID, opts.Tags)
 	}
 
-	e.execute(ctx, runID, wf, wf.Start, input)
+	if err := e.execute(ctx, runID, wf, wf.Start, input); err != nil {
+		return runID, err
+	}
 	return runID, nil
 }
 
@@ -179,13 +181,12 @@ func (e *SQLiteEngine) Resume(ctx context.Context, runID string) error {
 		return fmt.Errorf("kodomo: update run status: %w", err)
 	}
 
-	e.execute(ctx, runID, wf, resumeStep, resumeInput)
-	return nil
+	return e.execute(ctx, runID, wf, resumeStep, resumeInput)
 }
 
 // execute runs the workflow state machine starting at stepName with the given input.
 // It follows Next pointers until a step returns Done (Next=="") or an error.
-func (e *SQLiteEngine) execute(ctx context.Context, runID string, wf Workflow, stepName string, input json.RawMessage) {
+func (e *SQLiteEngine) execute(ctx context.Context, runID string, wf Workflow, stepName string, input json.RawMessage) error {
 	steps := buildStepMap(wf.Steps)
 	current := input
 	currentStep := stepName
@@ -195,7 +196,7 @@ func (e *SQLiteEngine) execute(ctx context.Context, runID string, wf Workflow, s
 		if !ok {
 			errMsg := fmt.Sprintf("unknown step %q", currentStep)
 			e.finishRun(runID, StatusFailed, nil, errMsg)
-			return
+			return fmt.Errorf("%s", errMsg)
 		}
 
 		attempt := e.nextAttempt(runID, currentStep)
@@ -207,7 +208,7 @@ func (e *SQLiteEngine) execute(ctx context.Context, runID string, wf Workflow, s
 		if err != nil {
 			e.recordStep(runID, currentStep, attempt, StatusFailed, "", current, nil, err.Error(), dur)
 			e.finishRun(runID, StatusFailed, nil, err.Error())
-			return
+			return err
 		}
 
 		e.recordStep(runID, currentStep, attempt, StatusCompleted, out.Next, current, out.Data, "", dur)
@@ -216,6 +217,7 @@ func (e *SQLiteEngine) execute(ctx context.Context, runID string, wf Workflow, s
 	}
 
 	e.finishRun(runID, StatusCompleted, current, "")
+	return nil
 }
 
 func (e *SQLiteEngine) GetRun(runID string) (*Run, error) {
