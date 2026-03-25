@@ -76,6 +76,7 @@ type Run struct {
 type StepResult struct {
 	ID        string          `json:"id"`
 	RunID     string          `json:"run_id"`
+	Seq       int             `json:"seq"`
 	StepName  string          `json:"step_name"`
 	Attempt   int             `json:"attempt"`
 	Status    Status          `json:"status"`

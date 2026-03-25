@@ -27,11 +27,11 @@ runID, _ := a.Start(ctx, "What files are in this directory?", nil)
 
 The agent registers a workflow with two steps:
 
-- **`llm`** — Calls the OpenAI Responses API with the registered tools and current conversation state. Parses the response for function calls. Bare text responses are treated as errors — all output must go through a tool like `message_user`.
-- **`tool`** — Executes each tool call handler sequentially. If any tool is marked `Terminal`, the run completes. Otherwise, results are sent back to the `llm` step.
+- **`llm`** — Calls the OpenAI Responses API with the registered tools and current conversation state. If the model returns function calls, the run transitions to `tool`. If it returns text, the workflow completes with that message.
+- **`tool`** — Executes each tool call handler sequentially, then sends the tool results back to `llm`.
 
 ```
-Start("prompt") -> llm -> tool -> llm -> tool -> ... -> tool(terminal) -> Done
+Start("prompt") -> llm -> tool -> llm -> tool -> ... -> llm(text) -> Done
 ```
 
 Each arrow is a persisted `StepResult` in SQLite. The full conversation history (LLM inputs, tool calls, tool outputs) is captured in the step data.
@@ -86,13 +86,9 @@ a.AddTool(agent.ToolDef{
 })
 ```
 
-### Terminal tools
-
-Set `Terminal: true` on a tool to end the run after it executes. The built-in `message_user` tool is terminal — when the LLM calls it, the message is delivered and the run completes.
-
 ### Built-in tools
 
-- **`message_user`** — Sends a message to the user. Terminal. The handler calls a configurable function (defaults to `fmt.Println`). Override with `WithMessageHandler(fn)`.
+The package itself does not ship terminal/message-delivery tools. The repository's built-in tools live in `kodomo/tools` and provide filesystem and shell access (`read`, `write`, `edit`, `bash`).
 
 ## Conversations
 

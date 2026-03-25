@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE TABLE IF NOT EXISTS step_results (
 	id          TEXT PRIMARY KEY,
 	run_id      TEXT NOT NULL REFERENCES runs(id),
+	seq         INTEGER NOT NULL,
 	step_name   TEXT NOT NULL,
 	attempt     INTEGER NOT NULL DEFAULT 1,
 	status      TEXT NOT NULL,
@@ -50,6 +51,7 @@ CREATE TABLE IF NOT EXISTS run_tags (
 CREATE INDEX IF NOT EXISTS idx_runs_status   ON runs(status);
 CREATE INDEX IF NOT EXISTS idx_runs_workflow ON runs(workflow_name);
 CREATE INDEX IF NOT EXISTS idx_steps_run     ON step_results(run_id);
+CREATE INDEX IF NOT EXISTS idx_steps_run_seq ON step_results(run_id, seq);
 `
 
 // SQLiteEngine is the concrete Engine backed by a SQLite database.
@@ -235,8 +237,8 @@ func (e *SQLiteEngine) GetRun(runID string) (*Run, error) {
 
 func (e *SQLiteEngine) GetStepResults(runID string) ([]StepResult, error) {
 	rows, err := e.db.Query(
-		`SELECT id, run_id, step_name, attempt, status, next_step, input, output, error, duration_ms, created_at
-		 FROM step_results WHERE run_id = ? ORDER BY created_at ASC, attempt ASC`, runID,
+		`SELECT id, run_id, seq, step_name, attempt, status, next_step, input, output, error, duration_ms, created_at
+		 FROM step_results WHERE run_id = ? ORDER BY seq ASC`, runID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("kodomo: query step results: %w", err)
@@ -350,9 +352,9 @@ func buildStepMap(steps []Step) map[string]Step {
 
 func (e *SQLiteEngine) recordStep(runID, stepName string, attempt int, status Status, next string, input, output json.RawMessage, errMsg string, dur time.Duration) {
 	_, _ = e.db.Exec(
-		`INSERT INTO step_results (id, run_id, step_name, attempt, status, next_step, input, output, error, duration_ms)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		newID(), runID, stepName, attempt, status, next,
+		`INSERT INTO step_results (id, run_id, seq, step_name, attempt, status, next_step, input, output, error, duration_ms)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		newID(), runID, e.nextSequence(runID), stepName, attempt, status, next,
 		nullableJSON(input), nullableJSON(output), errMsg, dur.Milliseconds(),
 	)
 }
@@ -370,6 +372,15 @@ func (e *SQLiteEngine) nextAttempt(runID, stepName string) int {
 	_ = e.db.QueryRow(
 		`SELECT COALESCE(MAX(attempt), 0) FROM step_results WHERE run_id = ? AND step_name = ?`,
 		runID, stepName,
+	).Scan(&max)
+	return max + 1
+}
+
+func (e *SQLiteEngine) nextSequence(runID string) int {
+	var max int
+	_ = e.db.QueryRow(
+		`SELECT COALESCE(MAX(seq), 0) FROM step_results WHERE run_id = ?`,
+		runID,
 	).Scan(&max)
 	return max + 1
 }
@@ -416,13 +427,15 @@ func scanRun(s scannable) (*Run, error) {
 func scanStepResult(s scannable) (StepResult, error) {
 	var r StepResult
 	var input, output, errMsg *string
-	var durMs int64
-	err := s.Scan(&r.ID, &r.RunID, &r.StepName, &r.Attempt, &r.Status, &r.Next,
+	var durMs sql.NullInt64
+	err := s.Scan(&r.ID, &r.RunID, &r.Seq, &r.StepName, &r.Attempt, &r.Status, &r.Next,
 		&input, &output, &errMsg, &durMs, &r.CreatedAt)
 	if err != nil {
 		return r, fmt.Errorf("kodomo: scan step result: %w", err)
 	}
-	r.Duration = time.Duration(durMs) * time.Millisecond
+	if durMs.Valid {
+		r.Duration = time.Duration(durMs.Int64) * time.Millisecond
+	}
 	if input != nil {
 		r.Input = json.RawMessage(*input)
 	}

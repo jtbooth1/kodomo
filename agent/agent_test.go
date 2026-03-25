@@ -69,7 +69,9 @@ func TestToolStep(t *testing.T) {
 	})
 
 	state, _ := json.Marshal(stepState{
-		PrevResponseID: "resp-123",
+		Model:           "gpt-test",
+		ReasoningEffort: "high",
+		PrevResponseID:  "resp-123",
 		ToolCalls: []toolCall{
 			{ID: "call-1", Name: "echo", Arguments: `{"x":1}`},
 		},
@@ -94,6 +96,12 @@ func TestToolStep(t *testing.T) {
 	}
 	if result.PrevResponseID != "resp-123" {
 		t.Fatalf("PrevResponseID not carried through: %s", result.PrevResponseID)
+	}
+	if result.Model != "gpt-test" {
+		t.Fatalf("model not carried through: %s", result.Model)
+	}
+	if result.ReasoningEffort != "high" {
+		t.Fatalf("reasoning effort not carried through: %s", result.ReasoningEffort)
 	}
 }
 
@@ -159,5 +167,44 @@ func TestWorkflowRegistered(t *testing.T) {
 	}
 	if run.Status != workflow.StatusFailed {
 		t.Fatalf("expected failed (no API key), got %s", run.Status)
+	}
+}
+
+func TestStartPersistsEffectiveRunOpts(t *testing.T) {
+	a, e := testAgent(t)
+
+	runID, err := a.Start(context.Background(), "hi", &RunOpts{
+		Model:           "gpt-override",
+		ReasoningEffort: "low",
+		ConversationID:  "conv-123",
+		PrevResponseID:  "resp-123",
+	})
+	if runID == "" {
+		t.Fatal("expected a run ID even on failure")
+	}
+	if err == nil {
+		t.Fatal("expected error (no API key)")
+	}
+
+	run, err := e.GetRun(runID)
+	if err != nil {
+		t.Fatalf("get run: %v", err)
+	}
+	if run.Tags["conversation_id"] != "conv-123" {
+		t.Fatalf("unexpected conversation_id tag: %v", run.Tags)
+	}
+
+	var state stepState
+	if err := json.Unmarshal(run.Input, &state); err != nil {
+		t.Fatalf("unmarshal run input: %v", err)
+	}
+	if state.Model != "gpt-override" {
+		t.Fatalf("unexpected model: %s", state.Model)
+	}
+	if state.ReasoningEffort != "low" {
+		t.Fatalf("unexpected reasoning effort: %s", state.ReasoningEffort)
+	}
+	if state.PrevResponseID != "resp-123" {
+		t.Fatalf("unexpected prev response id: %s", state.PrevResponseID)
 	}
 }

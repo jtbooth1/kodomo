@@ -131,6 +131,7 @@ failed, _ := e.ListRuns(&workflow.ListRunsOpts{
 
 Each `StepResult` records:
 
+- `Seq` — monotonic per-run sequence number used for deterministic ordering
 - `StepName` — which step in the workflow
 - `Attempt` — incrementing counter per step name within the run
 - `Status` — `completed` or `failed`

@@ -16,9 +16,6 @@ type Agent struct {
 	client openai.Client
 	config Config
 	tools  map[string]ToolDef
-
-	// set per-run by Start, read by llmStep
-	runOpts RunOpts
 }
 
 // New creates an Agent. The OpenAI client reads OPENAI_API_KEY from the environment.
@@ -49,21 +46,33 @@ func (a *Agent) Tool(name string) *ToolDef {
 // Start begins a new agent run. The prompt is sent to the LLM as a user message.
 // Returns the workflow run ID.
 func (a *Agent) Start(ctx context.Context, prompt string, opts *RunOpts) (string, error) {
+	model := a.config.Model
+	reasoningEffort := a.config.ReasoningEffort
+	var prevResponseID string
+	var conversationID string
+
 	if opts != nil {
-		a.runOpts = *opts
-	} else {
-		a.runOpts = RunOpts{}
+		if opts.Model != "" {
+			model = opts.Model
+		}
+		if opts.ReasoningEffort != "" {
+			reasoningEffort = opts.ReasoningEffort
+		}
+		prevResponseID = opts.PrevResponseID
+		conversationID = opts.ConversationID
 	}
 
 	state, _ := json.Marshal(stepState{
-		UserMessage:    prompt,
-		PrevResponseID: a.runOpts.PrevResponseID,
+		Model:           model,
+		ReasoningEffort: reasoningEffort,
+		UserMessage:     prompt,
+		PrevResponseID:  prevResponseID,
 	})
 
 	var startOpts *workflow.StartOpts
-	if a.runOpts.ConversationID != "" {
+	if conversationID != "" {
 		startOpts = &workflow.StartOpts{
-			Tags: map[string]string{"conversation_id": a.runOpts.ConversationID},
+			Tags: map[string]string{"conversation_id": conversationID},
 		}
 	}
 
@@ -138,8 +147,10 @@ func (a *Agent) toolStep(ctx context.Context, input json.RawMessage) (*workflow.
 	}
 
 	next, _ := json.Marshal(stepState{
-		PrevResponseID: state.PrevResponseID,
-		ToolResults:    results,
+		Model:           state.Model,
+		ReasoningEffort: state.ReasoningEffort,
+		PrevResponseID:  state.PrevResponseID,
+		ToolResults:     results,
 	})
 	return workflow.Goto("llm", next), nil
 }

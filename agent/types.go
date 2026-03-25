@@ -46,9 +46,11 @@ type toolResult struct {
 
 // stepState is the JSON structure flowing between the llm and tool steps.
 type stepState struct {
-	PrevResponseID string       `json:"prev_response_id,omitempty"`
-	UserMessage    string       `json:"user_message,omitempty"`
-	ToolCalls      []toolCall   `json:"tool_calls,omitempty"`
-	ToolResults    []toolResult `json:"tool_results,omitempty"`
-	Message        string       `json:"message,omitempty"` // text response from the LLM (final output)
+	Model           string                 `json:"model,omitempty"`
+	ReasoningEffort shared.ReasoningEffort `json:"reasoning_effort,omitempty"`
+	PrevResponseID  string                 `json:"prev_response_id,omitempty"`
+	UserMessage     string                 `json:"user_message,omitempty"`
+	ToolCalls       []toolCall             `json:"tool_calls,omitempty"`
+	ToolResults     []toolResult           `json:"tool_results,omitempty"`
+	Message         string                 `json:"message,omitempty"` // text response from the LLM (final output)
 }

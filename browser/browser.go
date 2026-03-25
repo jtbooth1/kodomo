@@ -120,6 +120,7 @@ type runRow struct {
 
 type stepRow struct {
 	ID         string
+	Seq        int
 	StepName   string
 	Attempt    int
 	Status     string
@@ -299,8 +300,8 @@ func (s *Server) loadRun(ctx context.Context, runID string) (*runRow, []stepRow,
 
 func (s *Server) loadSteps(ctx context.Context, runID string) ([]stepRow, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, step_name, attempt, status, next_step, input, output, error, duration_ms, created_at
-		FROM step_results WHERE run_id = ? ORDER BY created_at ASC`, runID)
+		`SELECT id, seq, step_name, attempt, status, next_step, input, output, error, duration_ms, created_at
+		FROM step_results WHERE run_id = ? ORDER BY seq ASC`, runID)
 	if err != nil {
 		return nil, fmt.Errorf("browser: load steps: %w", err)
 	}
@@ -310,8 +311,12 @@ func (s *Server) loadSteps(ctx context.Context, runID string) ([]stepRow, error)
 	for rows.Next() {
 		var row stepRow
 		var input, output, errStr *string
-		if err := rows.Scan(&row.ID, &row.StepName, &row.Attempt, &row.Status, &row.NextStep, &input, &output, &errStr, &row.DurationMs, &row.CreatedAt); err != nil {
+		var durationMs sql.NullInt64
+		if err := rows.Scan(&row.ID, &row.Seq, &row.StepName, &row.Attempt, &row.Status, &row.NextStep, &input, &output, &errStr, &durationMs, &row.CreatedAt); err != nil {
 			return nil, fmt.Errorf("browser: scan step: %w", err)
+		}
+		if durationMs.Valid {
+			row.DurationMs = durationMs.Int64
 		}
 		row.InputJSON = derefString(input)
 		row.OutputJSON = derefString(output)
@@ -622,6 +627,7 @@ const runTemplate = `
     <table>
       <thead>
         <tr>
+          <th>Seq</th>
           <th>Created</th>
           <th>Step</th>
           <th>Attempt</th>
@@ -633,6 +639,7 @@ const runTemplate = `
       <tbody>
         {{range .StepRows}}
           <tr>
+            <td>{{.Seq}}</td>
             <td>{{.CreatedAt}}</td>
             <td>{{.StepName}}</td>
             <td>{{.Attempt}}</td>
@@ -642,7 +649,7 @@ const runTemplate = `
           </tr>
         {{else}}
           <tr>
-            <td colspan="6" class="muted">No step results found.</td>
+            <td colspan="7" class="muted">No step results found.</td>
           </tr>
         {{end}}
       </tbody>
@@ -653,7 +660,7 @@ const runTemplate = `
     <h2>Step JSON</h2>
     {{range .StepRows}}
       <div class="card" style="margin-bottom: 16px;">
-        <h3>{{.StepName}} ({{.Status}})</h3>
+        <h3>#{{.Seq}} {{.StepName}} ({{.Status}})</h3>
         {{if .Error}}<p><strong>Error:</strong> {{.Error}}</p>{{end}}
         <div class="grid">
           <div>

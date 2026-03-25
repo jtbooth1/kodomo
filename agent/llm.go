@@ -22,7 +22,7 @@ func (a *Agent) llmStep(ctx context.Context, input json.RawMessage) (*workflow.S
 	}
 
 	params := responses.ResponseNewParams{
-		Model: shared.ResponsesModel(a.resolveModel()),
+		Model: shared.ResponsesModel(a.resolveModel(state)),
 		Tools: a.toolParams(),
 	}
 
@@ -30,7 +30,7 @@ func (a *Agent) llmStep(ctx context.Context, input json.RawMessage) (*workflow.S
 		params.Instructions = param.NewOpt(a.config.Instructions)
 	}
 
-	effort := a.resolveReasoningEffort()
+	effort := a.resolveReasoningEffort(state)
 	if effort != "" {
 		params.Reasoning = shared.ReasoningParam{Effort: effort}
 	}
@@ -71,30 +71,34 @@ func (a *Agent) llmStep(ctx context.Context, input json.RawMessage) (*workflow.S
 
 	if len(calls) > 0 {
 		next, _ := json.Marshal(stepState{
-			PrevResponseID: resp.ID,
-			ToolCalls:      calls,
+			Model:           state.Model,
+			ReasoningEffort: state.ReasoningEffort,
+			PrevResponseID:  resp.ID,
+			ToolCalls:       calls,
 		})
 		return workflow.Goto("tool", next), nil
 	}
 
 	// Text response — this is the message to the user. Done.
 	out, _ := json.Marshal(stepState{
-		PrevResponseID: resp.ID,
-		Message:        resp.OutputText(),
+		Model:           state.Model,
+		ReasoningEffort: state.ReasoningEffort,
+		PrevResponseID:  resp.ID,
+		Message:         resp.OutputText(),
 	})
 	return workflow.Done(out), nil
 }
 
-func (a *Agent) resolveModel() string {
-	if a.runOpts.Model != "" {
-		return a.runOpts.Model
+func (a *Agent) resolveModel(state stepState) string {
+	if state.Model != "" {
+		return state.Model
 	}
 	return a.config.Model
 }
 
-func (a *Agent) resolveReasoningEffort() shared.ReasoningEffort {
-	if a.runOpts.ReasoningEffort != "" {
-		return a.runOpts.ReasoningEffort
+func (a *Agent) resolveReasoningEffort(state stepState) shared.ReasoningEffort {
+	if state.ReasoningEffort != "" {
+		return state.ReasoningEffort
 	}
 	return a.config.ReasoningEffort
 }

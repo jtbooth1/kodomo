@@ -62,6 +62,9 @@ func TestHappyPath(t *testing.T) {
 	if len(steps) != 2 {
 		t.Fatalf("want 2 step results, got %d", len(steps))
 	}
+	if steps[0].Seq != 1 || steps[1].Seq != 2 {
+		t.Fatalf("unexpected seq values: %d, %d", steps[0].Seq, steps[1].Seq)
+	}
 	if steps[0].StepName != "upper" || steps[1].StepName != "wrap" {
 		t.Fatalf("unexpected step names: %s, %s", steps[0].StepName, steps[1].StepName)
 	}
@@ -115,6 +118,11 @@ func TestFailureAndResume(t *testing.T) {
 	// step1: completed | step2: failed, then completed
 	if len(steps) != 3 {
 		t.Fatalf("want 3 step results, got %d", len(steps))
+	}
+	for i, step := range steps {
+		if step.Seq != i+1 {
+			t.Fatalf("step %d: want seq=%d, got %d", i, i+1, step.Seq)
+		}
 	}
 }
 
